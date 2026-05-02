@@ -1,0 +1,159 @@
+networks:
+  spark-net:
+    driver: bridge
+
+volumes:
+  mariadb-data:
+  hive-warehouse:
+  spark-warehouse:
+  external-jars:
+  mlflow-artifacts:
+
+x-spark-common: &spark-common
+  image: bitnamilegacy/spark:${SPARK_VERSION}
+  environment: &spark-env
+    SPARK_RPC_AUTHENTICATION_ENABLED: "no"
+    SPARK_RPC_ENCRYPTION_ENABLED: "no"
+    SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED: "no"
+    SPARK_SSL_ENABLED: "no"
+    SPARK_USER: "spark"
+    GOOGLE_APPLICATION_CREDENTIALS: ${GCP_KEY_CONTAINER}
+  volumes:
+    - ./config/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+    - ./config/hive/hive-site.xml:/opt/bitnami/spark/conf/hive-site.xml:ro
+    - ./data:/opt/spark/data
+    - ./src:/opt/spark/src
+    - ./labs:/opt/spark/labs
+    - spark-warehouse:/opt/spark/warehouse
+    - external-jars:/opt/external-jars:ro
+    - ./spark-events:/opt/bitnami/spark/spark-events
+    - ${GCP_KEY_LOCAL}:${GCP_KEY_CONTAINER}:ro
+  networks:
+    - spark-net
+
+services:
+  jar-downloader:
+    image: alpine:latest
+    container_name: jar-downloader
+    command: >
+      sh -c "apk add --no-cache curl &&
+             curl -L https://repo1.maven.org/maven2/com/mysql/mysql-connector-j/8.2.0/mysql-connector-j-8.2.0.jar -o /jars/mysql-connector-j.jar &&
+             curl -L https://repo1.maven.org/maven2/com/google/cloud/spark/spark-bigquery-with-dependencies_2.12/0.35.1/spark-bigquery-with-dependencies_2.12-0.35.1.jar -o /jars/spark-bigquery.jar"
+    volumes:
+      - external-jars:/jars
+
+  spark-master:
+    <<: *spark-common
+    container_name: spark-master
+    hostname: spark-master
+    environment:
+      <<: *spark-env
+      SPARK_MODE: "master"
+    ports:
+      - "8080:8080"
+      - "7077:7077"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  spark-worker-1:
+    <<: *spark-common
+    container_name: spark-worker-1
+    environment:
+      <<: *spark-env
+      SPARK_MODE: "worker"
+      SPARK_MASTER_URL: "spark://spark-master:7077"
+      SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY}
+      SPARK_WORKER_CORES: ${SPARK_WORKER_CORES}
+    depends_on:
+      spark-master:
+        condition: service_healthy
+
+  spark-worker-2:
+    <<: *spark-common
+    container_name: spark-worker-2
+    environment:
+      <<: *spark-env
+      SPARK_MODE: "worker"
+      SPARK_MASTER_URL: "spark://spark-master:7077"
+      SPARK_WORKER_MEMORY: ${SPARK_WORKER_MEMORY}
+      SPARK_WORKER_CORES: ${SPARK_WORKER_CORES}
+    depends_on:
+      spark-master:
+        condition: service_healthy
+
+  jupyter:
+    build:
+      context: .
+      dockerfile: docker/jupyter/Dockerfile
+    container_name: jupyter
+    ports:
+      - "8888:8888"
+    environment:
+      - MLFLOW_TRACKING_URI=${MLFLOW_TRACKING_URI}
+      - JUPYTER_TOKEN=${JUPYTER_TOKEN}
+      - GOOGLE_APPLICATION_CREDENTIALS=${GCP_KEY_CONTAINER}
+    volumes:
+      - .:/home/jovyan/work
+      - ./config/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
+      - ${GCP_KEY_LOCAL}:${GCP_KEY_CONTAINER}:ro
+    networks:
+      - spark-net
+    depends_on:
+      spark-master:
+        condition: service_healthy
+      mlflow:
+        condition: service_started
+
+  hive-metastore-db:
+    image: mariadb:${MARIADB_VERSION}
+    container_name: hive-metastore-db
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+    volumes:
+      - mariadb-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - spark-net
+
+  hive-metastore:
+    image: apache/hive:${HIVE_VERSION}
+    container_name: hive-metastore
+    environment:
+      HIVE_AUX_JARS_PATH: "/opt/external-jars"
+    command: /opt/hive/bin/hive --service metastore
+    volumes:
+      - ./config/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro
+      - external-jars:/opt/external-jars:ro
+    networks:
+      - spark-net
+    depends_on:
+      hive-metastore-db:
+        condition: service_healthy
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:${MLFLOW_VERSION}
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow.db
+      - MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - ./mlflow_data:/mlflow
+    command: >
+      mlflow server 
+      --backend-store-uri sqlite:///mlflow.db 
+      --default-artifact-root /mlflow/artifacts 
+      --host 0.0.0.0
+    networks:
+      - spark-net

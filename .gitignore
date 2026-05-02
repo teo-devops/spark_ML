@@ -1,0 +1,22 @@
+# Logs de Spark (importante ignorar esto para evitar errores de permisos)
+spark-events/
+
+# Datos persistentes de bases de datos y almacenes
+mariadb-data/
+spark-warehouse/
+hive-warehouse/
+
+# Configuraciones de editores
+.idea/
+.vscode/
+
+# Archivos temporales
+*.log
+__pycache__/
+
+# data
+*.jar
+jobs/jars/
+data/raw/*.csv
+spark-events/
+mariadb-data/
