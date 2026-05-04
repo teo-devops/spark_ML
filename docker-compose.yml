@@ -1,3 +1,5 @@
+version: '3.8'
+
 networks:
   spark-net:
     driver: bridge
@@ -7,7 +9,6 @@ volumes:
   hive-warehouse:
   spark-warehouse:
   external-jars:
-  mlflow-artifacts:
 
 x-spark-common: &spark-common
   image: bitnamilegacy/spark:${SPARK_VERSION}
@@ -28,6 +29,7 @@ x-spark-common: &spark-common
     - external-jars:/opt/external-jars:ro
     - ./spark-events:/opt/bitnami/spark/spark-events
     - ${GCP_KEY_LOCAL}:${GCP_KEY_CONTAINER}:ro
+    - ./mlflow_data:/mlflow
   networks:
     - spark-net
 
@@ -53,7 +55,7 @@ services:
       - "8080:8080"
       - "7077:7077"
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD-SHELL", "bash -c 'cat < /dev/null > /dev/tcp/127.0.0.1/8080'"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -99,6 +101,7 @@ services:
       - .:/home/jovyan/work
       - ./config/spark/spark-defaults.conf:/opt/bitnami/spark/conf/spark-defaults.conf:ro
       - ${GCP_KEY_LOCAL}:${GCP_KEY_CONTAINER}:ro
+      - ./mlflow_data:/mlflow
     networks:
       - spark-net
     depends_on:
@@ -106,6 +109,24 @@ services:
         condition: service_healthy
       mlflow:
         condition: service_started
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:${MLFLOW_VERSION}
+    container_name: mlflow
+    ports:
+      - "5000:5000"
+    environment:
+      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow/mlflow.db
+      - MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
+    volumes:
+      - ./mlflow_data:/mlflow
+    command: >
+      mlflow server 
+      --backend-store-uri sqlite:///mlflow/mlflow.db 
+      --default-artifact-root /mlflow/artifacts 
+      --host 0.0.0.0
+    networks:
+      - spark-net
 
   hive-metastore-db:
     image: mariadb:${MARIADB_VERSION}
@@ -139,21 +160,3 @@ services:
     depends_on:
       hive-metastore-db:
         condition: service_healthy
-
-  mlflow:
-    image: ghcr.io/mlflow/mlflow:${MLFLOW_VERSION}
-    container_name: mlflow
-    ports:
-      - "5000:5000"
-    environment:
-      - MLFLOW_BACKEND_STORE_URI=sqlite:///mlflow.db
-      - MLFLOW_ARTIFACT_ROOT=/mlflow/artifacts
-    volumes:
-      - ./mlflow_data:/mlflow
-    command: >
-      mlflow server 
-      --backend-store-uri sqlite:///mlflow.db 
-      --default-artifact-root /mlflow/artifacts 
-      --host 0.0.0.0
-    networks:
-      - spark-net

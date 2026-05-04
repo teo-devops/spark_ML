@@ -54,9 +54,19 @@ done
 # 5. Ajustar permisos
 chmod -R 777 spark-events mlflow_data
 
-# 6. Lanzamiento
-echo -e "${GREEN}🐳 Levantando servicios...${NC}"
-docker-compose up -d
+# 6. Detectar comando docker compose
+if docker compose version > /dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD="docker compose"
+elif docker-compose version > /dev/null 2>&1; then
+    DOCKER_COMPOSE_CMD="docker-compose"
+else
+    echo -e "${RED}❌ ERROR: No se encontró 'docker compose' ni 'docker-compose'.${NC}"
+    exit 1
+fi
+
+# 7. Lanzamiento
+echo -e "${GREEN}🐳 Levantando servicios con $DOCKER_COMPOSE_CMD...${NC}"
+$DOCKER_COMPOSE_CMD up -d
 
 echo -e "\n${GREEN}✅ Sistema listo.${NC}"
 echo "-------------------------------------------------------"
