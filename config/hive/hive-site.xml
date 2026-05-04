@@ -28,6 +28,10 @@
     <name>hive.metastore.schema.verification</name>
     <value>false</value>
   </property>
+  <property>
+    <name>hive.metastore.db.type</name>
+    <value>MYSQL</value>
+  </property>
 
   <!-- 3. Metastore Location -->
   <property>

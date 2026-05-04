@@ -86,6 +86,21 @@ services:
       spark-master:
         condition: service_healthy
 
+
+  spark-history-server:
+    <<: *spark-common
+    container_name: spark-history-server
+    hostname: spark-history-server
+    user: root # Importante para evitar problemas de permisos en Linux
+    environment:
+      - SPARK_HISTORY_OPTS=-Dspark.history.fs.logDirectory=/opt/bitnami/spark/spark-events
+    volumes:
+      # CORREGIDO: Ahora el destino coincide con el environment
+      - ./spark-events:/opt/bitnami/spark/spark-events
+    ports:
+      - "18080:18080"
+    command: /opt/bitnami/spark/bin/spark-class org.apache.spark.deploy.history.HistoryServer
+
   jupyter:
     build:
       context: .
@@ -151,6 +166,9 @@ services:
     container_name: hive-metastore
     environment:
       HIVE_AUX_JARS_PATH: "/opt/external-jars"
+      DB_DRIVER: "mysql"
+      SERVICE_NAME: "metastore"
+      HADOOP_CLASSPATH: "/opt/external-jars/*"
     command: /opt/hive/bin/hive --service metastore
     volumes:
       - ./config/hive/hive-site.xml:/opt/hive/conf/hive-site.xml:ro

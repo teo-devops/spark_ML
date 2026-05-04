@@ -16,14 +16,20 @@ A professional, containerized environment for Distributed Data Science and Machi
    ```
    *This script will handle dependencies, environment variables, and start the Docker cluster.*
 
-## 🏗️ Architecture
+## 🏗️ Arquitectura y Componentes
 
-The cluster consists of:
-- **Spark Master**: Central coordinator for distributed tasks.
-- **Spark Workers (x2)**: 2 nodes for parallel data processing.
-- **Jupyter Lab**: Pre-configured with PyTorch, Spark, and BigQuery support.
-- **MLflow Server**: Centralized experiment tracking and model registry.
-- **Hive Metastore**: Persistent metadata management for Spark SQL.
+El laboratorio está diseñado siguiendo principios de **Single Responsibility**, asegurando que cada servicio cumpla un rol específico y escalable:
+
+| Componente | Función | Justificación |
+| :--- | :--- | :--- |
+| **Spark Master** | Coordinador del Cluster | Gestiona la distribución de tareas y recursos entre los workers. |
+| **Spark Workers (x2)** | Nodos de Cómputo | Ejecutan el procesamiento pesado de datos de forma paralela. |
+| **Jupyter Lab** | Entorno de Desarrollo | Interfaz interactiva pre-configurada con Spark, PyTorch y MLflow. |
+| **MLflow Server** | Tracking de Experimentos | Registro centralizado de parámetros, métricas y modelos de ML. |
+| **Hive Metastore** | Catálogo de Datos | Permite que todos los nodos del cluster compartan las mismas tablas y esquemas. |
+| **MariaDB (DB)** | Persistencia de Metadata | Base de datos relacional para el almacenamiento persistente del catálogo Hive. |
+| **History Server** | Análisis Post-Mortem | Permite auditar y optimizar jobs de Spark una vez han finalizado. |
+| **Jar Downloader** | Gestor de Dependencias | Automatiza la descarga de conectores críticos (MySQL, BigQuery) al iniciar. |
 
 ## 🌐 Access Points
 
